@@ -1,224 +1,273 @@
 <!DOCTYPE html>
 <html lang="it">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Foglio Presenze Assemblea</title>
-  <!-- Bootstrap CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <!-- Alpine.js -->
-  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-  <style>
-    th.sortable { cursor: pointer; }
-    th.sortable.disabled { cursor: not-allowed; opacity: 0.6; }
-    th.sortable .arrow { font-size: 0.75em; margin-left: 0.25em; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Foglio Presenze Assemblea</title>
+    <!-- Bootstrap CSS -->
+    <link href="./vendor/bootstrap.min.css" rel="stylesheet">
+    <!-- Alpine.js -->
+    <script src="./vendor/alpine.min.js" defer></script>
+    <style>
+        th.sortable {
+            cursor: pointer;
+        }
+
+        th.sortable.disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        th.sortable .arrow {
+            font-size: 0.75em;
+            margin-left: 0.25em;
+        }
+    </style>
 </head>
+
 <body class="bg-light" x-data="attendanceApp()" x-init="loadState()">
-  <div class="container py-4">
-    <h2 class="mb-4">Foglio Presenze Assemblea</h2>
+    <div class="container py-4">
+        <h2 class="mb-4">Foglio Presenze Assemblea</h2>
 
-    <!-- Import CSV -->
-    <div class="mb-3">
-      <label for="csvInput" class="form-label">Importa CSV Condomini (Unità*, Nome*, Millesimi*, Stato, Delegato)</label>
-      <input type="file" id="csvInput" class="form-control" accept=".csv" @change="importCSV" :disabled="anyEditing">
+        <!-- Import CSV -->
+        <div class="mb-3">
+            <label for="csvInput" class="form-label">Importa CSV Condomini (Unità*, Nome*, Millesimi*, Stato,
+                Delegato)</label>
+            <input type="file" id="csvInput" class="form-control" accept=".csv" @change="importCSV"
+                :disabled="anyEditing">
+        </div>
+
+        <!-- Totale Millesimi -->
+        <div class="mb-3 fs-2">
+            <span class="fw-semibold">Totale Millesimi Presenti:</span>
+            <span class="badge" :class="canStartMillesimi ? 'bg-success' : 'bg-danger'"
+                x-text="totalMillesimiPresentiODelegati"></span> / <span class="" x-text="totalMillesimi"></span>
+        </div>
+        <!-- Condomini presenti -->
+        <div class="mb-3 fs-2">
+            <span class="fw-semibold">Condomini Presenti:</span>
+            <span class="badge" :class="canStartCondomini ? 'bg-success' : 'bg-danger'"
+                x-text="totalCondominiPresentiODelegati"></span> / <span class="" x-text="totalCondomini"></span>
+        </div>
+
+        <!-- Azioni -->
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <input type="text" class="form-control me-2" placeholder="Cerca condomino..." x-model="searchTerm"
+                :disabled="anyEditing" style="max-width:300px;">
+            <div>
+                <label class="form-check-label me-2" for="autoSave"
+                    title="Salva automaticamente lo stato ogni volta che aggiungi/modifichi/elimini una riga">Salva
+                    automaticamente
+                    <input type="checkbox" class="form-check-input" id="autoSave" x-model="autoSave">
+                </label>
+                <button class="btn btn-info me-2" @click="saveAll"
+                    :disabled="autoSave || anyEditing || condomini.length===0">Salva Stato</button>
+                <button class="btn btn-success me-2" @click="addRow" :disabled="anyEditing">Aggiungi riga</button>
+                <button class="btn btn-primary me-2" @click="exportCSV" :disabled="anyEditing">Esporta CSV</button>
+            </div>
+        </div>
+
+
+        <!-- Tabella -->
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped bg-white">
+                <thead class="table-light">
+                    <tr>
+                        <th :class="['sortable', {disabled:anyEditing}]" @click="!anyEditing && sortBy('name')">
+                            Nome <span class="arrow" x-show="sortKey==='name'"><span
+                                    x-text="sortAsc?'▲':'▼'"></span></span>
+                        </th>
+                        <th :class="['sortable', {disabled:anyEditing}]" @click="!anyEditing && sortBy('unit')">
+                            Unità <span class="arrow" x-show="sortKey==='unit'"><span
+                                    x-text="sortAsc?'▲':'▼'"></span></span>
+                        </th>
+                        <th :class="['sortable', {disabled:anyEditing}]" @click="!anyEditing && sortBy('millesimi')">
+                            Millesimi <span class="arrow" x-show="sortKey==='millesimi'"><span
+                                    x-text="sortAsc?'▲':'▼'"></span></span>
+                        </th>
+                        <th :class="['sortable', {disabled:anyEditing}]" @click="!anyEditing && sortBy('status')">
+                            Stato <span class="arrow" x-show="sortKey==='status'"><span
+                                    x-text="sortAsc?'▲':'▼'"></span></span>
+                        </th>
+                        <th :class="['sortable', {disabled:anyEditing}]" @click="!anyEditing && sortBy('delegate')">
+                            Delegato <span class="arrow" x-show="sortKey==='delegate'"><span
+                                    x-text="sortAsc?'▲':'▼'"></span></span>
+                        </th>
+                        <th>Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="(c, idx) in sortedFilteredCondomini" :key="idx">
+                        <tr>
+                            <td>
+                                <span x-show="!c.isEditing" x-text="c.name"></span>
+                                <input x-show="c.isEditing" type="text" class="form-control form-control-sm"
+                                    x-model="c.name" placeholder="Nome">
+                            </td>
+                            <td>
+                                <span x-show="!c.isEditing" x-text="c.unit"></span>
+                                <input x-show="c.isEditing" type="text" class="form-control form-control-sm"
+                                    x-model="c.unit" placeholder="Unità">
+                            </td>
+                            <td>
+                                <span x-show="!c.isEditing" x-text="c.millesimi"></span>
+                                <input x-show="c.isEditing" type="number" min="0" class="form-control form-control-sm"
+                                    x-model.number="c.millesimi" placeholder="Millesimi">
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm" x-model="c.status"
+                                    @change="if(c.status!=='Delegato') c.delegate=''">
+                                    <option>Presente</option>
+                                    <option>Assente</option>
+                                    <option>Delegato</option>
+                                </select>
+                            </td>
+                            <td>
+                                <input x-show="c.status === 'Delegato'" type="text" class="form-control form-control-sm"
+                                    x-model="c.delegate" placeholder="Delegato" :disabled="c.status!=='Delegato'">
+                            </td>
+                            <td>
+                                <div x-show="!c.isEditing && !anyEditing">
+                                    <button class="btn btn-sm btn-outline-primary me-1"
+                                        @click="startEdit(c)">Modifica</button>
+                                    <button class="btn btn-danger btn-sm" @click="removeRow(idx)">Elimina</button>
+                                </div>
+                                <div x-show="c.isEditing">
+                                    <button class="btn btn-success btn-sm me-1" @click="saveEdit(c)">Salva</button>
+                                    <button class="btn btn-secondary btn-sm" @click="cancelEdit(c)">Annulla</button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="sortedFilteredCondomini.length === 0">
+                        <td colspan="6" class="text-center text-muted py-3">Nessun condomino trovato</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 
-    <!-- Totale Millesimi -->
-    <div class="mb-3 fs-2">
-      <span class="fw-semibold">Totale Millesimi Presenti:</span>
-      <span class="badge" :class="canStartMillesimi ? 'bg-success' : 'bg-danger'" x-text="totalMillesimiPresentiODelegati"></span> / <span class="" x-text="totalMillesimi"></span>
-    </div>
-    <!-- Condomini presenti -->
-    <div class="mb-3 fs-2">
-      <span class="fw-semibold">Condomini Presenti:</span>
-      <span class="badge" :class="canStartCondomini ? 'bg-success' : 'bg-danger'" x-text="totalCondominiPresentiODelegati"></span> / <span class="" x-text="totalCondomini"></span>
-    </div>
+    <script>
+        function attendanceApp() {
+            return {
+                condomini: [], backupRow: null, searchTerm: '', sortKey: 'name', sortAsc: true, autoSave: false,
 
-    <!-- Azioni -->
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <input type="text" class="form-control me-2" placeholder="Cerca condomino..." x-model="searchTerm" :disabled="anyEditing" style="max-width:300px;">
-      <div>
-        <label class="form-check-label me-2" for="autoSave" title="Salva automaticamente lo stato ogni volta che aggiungi/modifichi/elimini una riga">Salva automaticamente
-            <input type="checkbox" class="form-check-input" id="autoSave" x-model="autoSave">
-        </label>
-        <button class="btn btn-info me-2" @click="saveAll" :disabled="autoSave || anyEditing || condomini.length===0">Salva Stato</button>
-        <button class="btn btn-success me-2" @click="addRow" :disabled="anyEditing">Aggiungi riga</button>
-        <button class="btn btn-primary me-2" @click="exportCSV" :disabled="anyEditing">Esporta CSV</button>
-      </div>
-    </div>
+                get anyEditing() {return this.condomini.some(c => c.isEditing);},
 
+                loadState() {
+                    const data = localStorage.getItem('condomini');
+                    if (data) this.condomini = JSON.parse(data);
+                },
 
-    <!-- Tabella -->
-    <div class="table-responsive">
-      <table class="table table-bordered table-striped bg-white">
-        <thead class="table-light">
-          <tr>
-            <th :class="['sortable', {disabled:anyEditing}]" @click="!anyEditing && sortBy('name')">
-              Nome <span class="arrow" x-show="sortKey==='name'"><span x-text="sortAsc?'▲':'▼'"></span></span>
-            </th>
-            <th :class="['sortable', {disabled:anyEditing}]" @click="!anyEditing && sortBy('unit')">
-              Unità <span class="arrow" x-show="sortKey==='unit'"><span x-text="sortAsc?'▲':'▼'"></span></span>
-            </th>
-            <th :class="['sortable', {disabled:anyEditing}]" @click="!anyEditing && sortBy('millesimi')">
-              Millesimi <span class="arrow" x-show="sortKey==='millesimi'"><span x-text="sortAsc?'▲':'▼'"></span></span>
-            </th>
-            <th :class="['sortable', {disabled:anyEditing}]" @click="!anyEditing && sortBy('status')">
-              Stato <span class="arrow" x-show="sortKey==='status'"><span x-text="sortAsc?'▲':'▼'"></span></span>
-            </th>
-            <th :class="['sortable', {disabled:anyEditing}]" @click="!anyEditing && sortBy('delegate')">
-              Delegato <span class="arrow" x-show="sortKey==='delegate'"><span x-text="sortAsc?'▲':'▼'"></span></span>
-            </th>
-            <th>Azioni</th>
-          </tr>
-        </thead>
-        <tbody>
-          <template x-for="(c, idx) in sortedFilteredCondomini" :key="idx">
-            <tr>
-              <td>
-                <span x-show="!c.isEditing" x-text="c.name"></span>
-                <input x-show="c.isEditing" type="text" class="form-control form-control-sm" x-model="c.name" placeholder="Nome">
-              </td>
-              <td>
-                <span x-show="!c.isEditing" x-text="c.unit"></span>
-                <input x-show="c.isEditing" type="text" class="form-control form-control-sm" x-model="c.unit" placeholder="Unità">
-              </td>
-              <td>
-                <span x-show="!c.isEditing" x-text="c.millesimi"></span>
-                <input x-show="c.isEditing" type="number" min="0" class="form-control form-control-sm" x-model.number="c.millesimi" placeholder="Millesimi">
-              </td>
-              <td>
-                <select class="form-select form-select-sm" x-model="c.status" @change="if(c.status!=='Delegato') c.delegate=''">
-                  <option>Presente</option>
-                  <option>Assente</option>
-                  <option>Delegato</option>
-                </select>
-              </td>
-              <td>
-                <input x-show="c.status === 'Delegato'" type="text" class="form-control form-control-sm" x-model="c.delegate" placeholder="Delegato" :disabled="c.status!=='Delegato'">
-              </td>
-              <td>
-                <div x-show="!c.isEditing">
-                  <button class="btn btn-sm btn-outline-primary me-1" @click="startEdit(c)">Modifica</button>
-                  <button class="btn btn-danger btn-sm" @click="removeRow(idx)">Elimina</button>
-                </div>
-                <div x-show="c.isEditing">
-                  <button class="btn btn-success btn-sm me-1" @click="saveEdit(c)">Salva</button>
-                  <button class="btn btn-secondary btn-sm" @click="cancelEdit(c)">Annulla</button>
-                </div>
-              </td>
-            </tr>
-          </template>
-          <tr x-show="sortedFilteredCondomini.length === 0">
-            <td colspan="6" class="text-center text-muted py-3">Nessun condomino trovato</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+                saveAll() {
+                    localStorage.setItem('condomini', JSON.stringify(this.condomini));
+                    alert('Stato salvato!');
+                },
 
-  <script>
-    function attendanceApp() {
-      return {
-        condomini: [], backupRow: null, searchTerm: '', sortKey: 'name', sortAsc: true, autoSave: false,
+                importCSV(event) {
+                    if (!confirm('Sei sicuro di voler sovrascrivere il contenuto della tabella?')) return;
 
-        get anyEditing() { return this.condomini.some(c => c.isEditing); },
+                    const file = event.target.files[0]; if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = e => {
+                        const lines = e.target.result.split(/\r?\n/).filter(l => l.trim());
+                        let start = 0;
+                        const headers = lines[0].split(';').map(h => h.trim().toLowerCase());
+                        const norm = headers.map(h => h.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+                        if (norm.includes('nome') && norm.includes('unita') && norm.includes('millesimi')) start = 1;
+                        for (let i = start; i < lines.length; i++) {
+                            const cols = lines[i].split(';').map(c => c.trim());
+                            console.log(cols);
+                            this.condomini.push({
+                                unit: parseInt(cols[0]) || '',
+                                name: cols[1] || '',
+                                millesimi: parseFloat(cols[2].replace(',', '.')) || 0,
+                                status: ['Presente', 'Assente', 'Delegato'].includes(cols[3]) ? cols[3] : 'Assente',
+                                delegate: (cols[3] === 'Delegato' && cols[4]) ? cols[4] : '',
+                                isEditing: false,
+                                isNew: false
+                            });
+                        }
+                        event.target.value = '';
+                    };
+                    this.condomini = [];
+                    reader.readAsText(file);
+                },
 
-        loadState() {
-          const data = localStorage.getItem('condomini');
-          if (data) this.condomini = JSON.parse(data);
-        },
+                addRow() {
+                    this.condomini.unshift({
+                        name: '',
+                        unit: '',
+                        millesimi: 0,
+                        status: 'Assente',
+                        delegate: '',
+                        isEditing: true,
+                        isNew: true
+                    });
+                    this.searchTerm = '';
+                },
 
-        saveAll() {
-          localStorage.setItem('condomini', JSON.stringify(this.condomini));
-          alert('Stato salvato!');
-        },
+                removeRow(idx) {
+                    const c = this.condomini[idx];
+                    if (!this.condomini[idx].isNew && !confirm('Sei sicuro di voler eliminare questa riga? (' + c.name + ')')) return;
+                    this.condomini.splice(idx, 1);
+                    if (this.autoSave) this.saveAll();
+                },
+                startEdit(row) {this.backupRow = {...row}; row.isEditing = true;},
+                saveEdit(row) {
+                    row.isEditing = false;
+                    row.isNew = false;
+                    this.backupRow = null;
+                    if (this.autoSave) this.saveAll();
+                },
+                cancelEdit(row) {if (row.isNew) {const idx = this.condomini.indexOf(row); if (idx > -1) this.removeRow(idx);} else {Object.assign(row, this.backupRow); row.isEditing = false;} this.backupRow = null;},
 
-        importCSV(event) {
-          const file = event.target.files[0]; if (!file) return;
-          const reader = new FileReader();
-          reader.onload = e => {
-            const lines = e.target.result.split(/\r?\n/).filter(l => l.trim());
-            let start = 0;
-            const headers = lines[0].split(';').map(h => h.trim().toLowerCase());
-            const norm = headers.map(h => h.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
-            if (norm.includes('nome') && norm.includes('unita') && norm.includes('millesimi')) start = 1;
-            for (let i = start; i < lines.length; i++) {
-              const cols = lines[i].split(';').map(c => c.trim());
-                        console.log(cols);
-              this.condomini.push({
-                unit: parseInt(cols[0]) || '',
-                name: cols[1] || '',
-                millesimi: parseFloat(cols[2].replace(',','.')) || 0,
-                status: ['Presente','Assente','Delegato'].includes(cols[3]) ? cols[3] : 'Assente',
-                delegate: (cols[3] === 'Delegato' && cols[4]) ? cols[4] : '',
-                isEditing: false,
-                isNew: false
-              });
-            }
-            event.target.value = '';
-          };
-          reader.readAsText(file);
-        },
+                get canStart() {
+                    return this.totalMillesimiPresentiODelegati > 334 && this.totalCondominiPresentiODelegati > (this.totalCondomini / 3);
+                },
 
-        addRow() { this.condomini.unshift({ name: '', unit: '', millesimi: 0, status: 'Assente', delegate: '', isEditing: true, isNew: true }); this.searchTerm = ''; },
-
-        removeRow(idx) {
-            const c = this.condomini[idx];
-            if (!this.condomini[idx].isNew && !confirm('Sei sicuro di voler eliminare questa riga? (' + c.name + ')')) return;
-            this.condomini.splice(idx, 1);
-            if (this.autoSave) this.saveAll();
-        },
-        startEdit(row) { this.backupRow = { ...row }; row.isEditing = true; },
-        saveEdit(row) {
-            row.isEditing = false;
-            row.isNew = false;
-            this.backupRow = null;
-            if (this.autoSave) this.saveAll();
-        },
-        cancelEdit(row) { if (row.isNew) { const idx = this.condomini.indexOf(row); if (idx > -1) this.removeRow(idx); } else { Object.assign(row, this.backupRow); row.isEditing = false; } this.backupRow = null; },
-
-        get canStart() {
-            return this.totalMillesimiPresentiODelegati > 334 && this.totalCondominiPresentiODelegati > (this.totalCondomini / 3);
-        },
-
-        get canStartMillesimi() {
-            return this.totalMillesimiPresentiODelegati > 334;
-        },
-        get canStartCondomini() {
-            return this.totalCondominiPresentiODelegati > (this.totalCondomini / 3);
-        },
-        get filteredCondomini() { return this.condomini.filter(c => c.isEditing || c.name.toLowerCase().includes(this.searchTerm.toLowerCase())); },
-            get sortedFilteredCondomini() { if (this.anyEditing) return this.filteredCondomini; return [...this.filteredCondomini].sort((a,b) => { let va=a[this.sortKey], vb=b[this.sortKey]; if (this.sortKey==='millesimi'){va=+va;vb=+vb;} else if (this.sortKey==='unit') { } else {va=(va||'').toLowerCase();vb=(vb||'').toLowerCase();} return va<vb?(this.sortAsc?-1:1):va>vb?(this.sortAsc?1:-1):0; }); },
-        sortBy(key) { if (this.anyEditing) return; this.sortAsc = (this.sortKey===key)?!this.sortAsc:true; this.sortKey = key; },
-        get totalMillesimiPresentiODelegati() { return this.condomini.reduce((s,c)=>s+((c.status==='Presente'||c.status==='Delegato')?c.millesimi:0),0).toFixed(4); },
-        get totalMillesimi() {
-            // round this number to 4 decimals
-            return this.condomini.reduce((s,c)=>s+c.millesimi,0).toFixed(4);
-        },
-        get totalCondominiPresentiODelegati() { return this.condomini.reduce((s,c)=>s+((c.status==='Presente'||c.status==='Delegato')?1:0),0); },
-        get totalCondomini() {
-            return this.condomini.length;
-        },
-        exportCSV() {
-            if (this.condomini.length === 0) return;
-            const header=['Nome','Unità','Millesimi','Stato','Delegato'], lines=[header.join(';')];
-                let total=0;
-                this.condomini.forEach(c=>{
-                    lines.push([c.name.trim(),c.unit,c.millesimi,c.status,c.delegate.trim()].join(';'));
-                    if(c.status==='Presente'||c.status==='Delegato') total+=c.millesimi;
-                });
-                const blob=new Blob([lines.join('\n')],{type:'text/csv'}), url=URL.createObjectURL(blob), a=document.createElement('a');
-                a.href=url;
-                a.download='foglio_presenze.csv';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }
-      };
-    }
-  </script>
+                get canStartMillesimi() {
+                    return this.totalMillesimiPresentiODelegati > 334;
+                },
+                get canStartCondomini() {
+                    return this.totalCondominiPresentiODelegati > (this.totalCondomini / 3);
+                },
+                get filteredCondomini() {return this.condomini.filter(c => c.isEditing || c.name.toLowerCase().includes(this.searchTerm.toLowerCase()));},
+                get sortedFilteredCondomini() {
+                    <!-- if (this.anyEditing) -->
+                        <!-- return this.filteredCondomini; -->
+                    return [...this.filteredCondomini].sort((a, b) => {let va = a[this.sortKey], vb = b[this.sortKey]; if (this.sortKey === 'millesimi') {va = +va; vb = +vb;} else if (this.sortKey === 'unit') { } else {va = (va || '').toLowerCase(); vb = (vb || '').toLowerCase();} return va < vb ? (this.sortAsc ? -1 : 1) : va > vb ? (this.sortAsc ? 1 : -1) : 0;});
+                },
+                sortBy(key) {if (this.anyEditing) return; this.sortAsc = (this.sortKey === key) ? !this.sortAsc : true; this.sortKey = key;},
+                get totalMillesimiPresentiODelegati() {return this.condomini.reduce((s, c) => s + ((c.status === 'Presente' || c.status === 'Delegato') ? c.millesimi : 0), 0).toFixed(4);},
+                get totalMillesimi() {
+                    // round this number to 4 decimals
+                    return this.condomini.reduce((s, c) => s + c.millesimi, 0).toFixed(4);
+                },
+                get totalCondominiPresentiODelegati() {return this.condomini.reduce((s, c) => s + ((c.status === 'Presente' || c.status === 'Delegato') ? 1 : 0), 0);},
+                get totalCondomini() {
+                    return this.condomini.length;
+                },
+                exportCSV() {
+                    if (this.condomini.length === 0) return;
+                    const header = ['Unita', 'Nome', 'Millesimi', 'Stato', 'Delegato'], lines = [header.join(';')];
+                    let total = 0;
+                    this.condomini.forEach(c => {
+                        lines.push([c.unit, c.name.trim(), c.millesimi, c.status, c.delegate.trim()].join(';'));
+                        if (c.status === 'Presente' || c.status === 'Delegato') total += c.millesimi;
+                    });
+                    const blob = new Blob([lines.join('\n')], {type: 'text/csv'}), url = URL.createObjectURL(blob), a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'foglio_presenze.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }
+            };
+        }
+    </script>
 </body>
-</html>
 
+</html>
