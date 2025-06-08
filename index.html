@@ -117,7 +117,7 @@
                             </td>
                             <td>
                                 <select class="form-select form-select-sm" x-model="c.status"
-                                    @change="if(c.status!=='Delegato') c.delegate=''">
+                                    @change="if(c.status!=='Delegato') c.delegate=''" @input="if(autoSave) saveAll()" >
                                     <option>Presente</option>
                                     <option>Assente</option>
                                     <option>Delegato</option>
@@ -162,7 +162,9 @@
 
                 saveAll() {
                     localStorage.setItem('condomini', JSON.stringify(this.condomini));
-                    alert('Stato salvato!');
+                    if (!this.autoSave) {
+                        alert('Stato salvato!');
+                    }
                 },
 
                 importCSV(event) {
